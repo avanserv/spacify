@@ -1,0 +1,52 @@
+[package]
+name = "spacify"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A fast formatter for the vertical rhythm of Python code, complementary to ruff"
+license = "MIT"
+repository = "https://github.com/avanserv/spacify"
+readme = "README.md"
+keywords = ["python", "formatter", "blank-lines", "ruff"]
+categories = ["command-line-utilities", "development-tools"]
+# The fixtures are test data, and the Python packaging files belong to the wheel, not the crate.
+exclude = ["tests/fixtures/", ".github/", "pyproject.toml"]
+
+[lib]
+name = "spacify"
+path = "src/lib.rs"
+
+[[bin]]
+name = "spacify"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+globset = "0.4.20"
+ignore = "0.4.33"
+rayon = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+similar = "3.2.0"
+toml = "1.1.8"
+tree-sitter = "0.27.1"
+tree-sitter-python = "0.25.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+tempfile = "3.27.0"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Rule toggles are bools by nature, and the errors are anyhow chains read by a person.
+struct_excessive_bools = "allow"
+missing_errors_doc = "allow"

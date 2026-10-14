@@ -1,0 +1,29 @@
+# Debug a path: git check-ignore -v <file>
+
+# --- Rust build output ---
+/target/
+
+# --- Python packaging (maturin) ---
+/dist/
+/.venv/
+__pycache__/
+*.py[cod]
+
+# --- Secrets and local env ---
+.env
+.env.*
+
+# --- IDE / editor ---
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- OS noise ---
+.DS_Store
+Thumbs.db
+
+# --- AI agents & tools ---
+# The whole directory, not just the local settings: CLAUDE.md is the shared part.
+/.claude/
+.mcp.json

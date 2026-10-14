@@ -1,0 +1,5 @@
+# rustfmt and clippy are part of the gate, so rustup installs them with the toolchain.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

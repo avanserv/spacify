@@ -1,0 +1,109 @@
+repos:
+
+  # ----------------------------------------------------------------------------
+  # All files
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        name: all      | fix trailing whitespaces
+        exclude: ^tests/fixtures/
+      - id: end-of-file-fixer
+        name: all      | fix end of files
+        exclude: ^tests/fixtures/
+      - id: check-yaml
+        name: all      | check yaml
+      - id: check-toml
+        name: all      | check toml
+      - id: check-merge-conflict
+        name: all      | check merge conflict markers
+      - id: check-added-large-files
+        name: all      | check large files
+        args: ['--maxkb=500']
+
+  # CHANGELOG.md is release-please's output, so a fix applied there is undone by the next release.
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.2
+    hooks:
+      - id: markdownlint-cli2
+        name: all      | markdown format (markdownlint)
+        args: ['--fix']
+        exclude: ^CHANGELOG\.md$
+        language_version: '22'
+        additional_dependencies: ['markdownlint-cli2@0.23.2']
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        name: all      | codespell
+        exclude: ^Cargo\.lock$
+
+  # The upstream hook scans the staged diff rather than the files it is handed, so it finds nothing
+  # when CI runs `prek run --all-files`: the Security Scan job in ci.yml covers the whole tree.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+        name: all      | secrets (gitleaks)
+
+  # ----------------------------------------------------------------------------
+  # GitHub Actions
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.30.1
+    hooks:
+      - id: zizmor
+        name: actions  | workflow security (zizmor)
+        args: ['--no-progress', '--config', '.github/zizmor.yml']
+        exclude: ^\.github/zizmor\.yml$
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+        name: actions  | workflow lint (actionlint)
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.38.2
+    hooks:
+      - id: check-github-workflows
+        name: actions  | workflow schema
+      # A job without a timeout holds its runner until GitHub's own six-hour ceiling.
+      - id: check-github-workflows-require-timeout
+        name: actions  | workflow timeouts
+      - id: check-dependabot
+        name: actions  | dependabot schema
+
+  # ----------------------------------------------------------------------------
+  # Rust
+  #
+  # The toolchain on PATH, not a hook-provisioned one, so the hooks apply the same rules as
+  # `make check`. Cargo works on the whole crate, so no hook takes file names.
+
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: rust     | format (rustfmt)
+        entry: cargo fmt --all
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: clippy
+        name: rust     | lint (clippy)
+        entry: cargo clippy --all-targets --locked -- -D warnings
+        language: system
+        files: (\.rs|^Cargo\.(toml|lock)|^clippy\.toml)$
+        pass_filenames: false
+        require_serial: true
+
+      # The fixtures are byte-exact expectations, so this is the hook that guards them.
+      - id: cargo-test
+        name: rust     | tests (cargo)
+        entry: cargo test --locked --quiet
+        language: system
+        files: (\.rs|^Cargo\.(toml|lock)|^tests/fixtures/.*)$
+        pass_filenames: false
+        require_serial: true

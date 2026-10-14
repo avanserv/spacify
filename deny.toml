@@ -1,0 +1,16 @@
+# cargo-deny: what the dependency tree may hold. CI runs `cargo deny check`.
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+# Every licence here is compatible with distributing spacify under MIT.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "Unlicense", "Zlib"]
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

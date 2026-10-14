@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  pull_request:
+    # This list is load-bearing: naming any type replaces the implied set.
+    types: [opened, synchronize, reopened]
+  # The run the README badge reports.
+  push:
+    branches:
+      - main
+
+# A superseded push to a pull request should not keep burning minutes, so its in-progress runs are
+# cancelled when a newer commit lands. A run on main is left to finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Read-only by default, so a job gets write access only by asking for it in its own block and
+# saying there what it needs it for. No job in this file does.
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: Pre-commit Hooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # rust-toolchain.toml names the channel and components; rustup on the runner reads it.
+      - name: Setup Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      # Format, lint and tests all live here, along with the workflow audits. The gitleaks hook is
+      # the one that proves nothing in this job: it reads the staged diff, and nothing is staged.
+      # The Security Scan job covers the tree instead.
+      - name: Run pre-commit
+        uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
+        with:
+          extra-args: --all-files
+
+  tests:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Run the tests
+        run: cargo test --locked
+
+  ruff-compat:
+    name: Ruff Round Trip
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false
+
+      # Pinned, because the compatibility promise is made against a known ruff. Dependabot does not
+      # see this line: move it forward by hand, and a failure here is the news that ruff changed.
+      - name: Install ruff
+        run: uv tool install ruff==0.16.9
+
+      # The fixtures, then CPython's Lib, in both orders. Makefile names the CPython tag.
+      - name: Check that ruff and spacify agree
+        run: make compat
+
+  build:
+    name: Build & Install
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          args: --release --out dist
+          manylinux: auto
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false
+
+      # What a user gets: the wheel alone, in an environment that has never seen the source tree.
+      - name: Install the wheel into a clean environment
+        run: |
+          uv venv "$RUNNER_TEMP/smoke"
+          uv pip install --python "$RUNNER_TEMP/smoke" dist/*.whl
+          "$RUNNER_TEMP/smoke/bin/spacify" --version
+          printf 'x = 1\nif x:\n    pass\n' | "$RUNNER_TEMP/smoke/bin/spacify" - | grep -qx ''
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A pinned binary download rather than a vendor action, checked against a digest recorded
+      # here. Dependabot does not see it: bump the version and its digest together.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xz -C "$RUNNER_TEMP" -f "$RUNNER_TEMP/gitleaks.tar.gz" gitleaks
+
+      # The step the gitleaks hook cannot replace: scanning the working tree is what makes a green
+      # Security Scan mean there are no secrets in it.
+      - name: Scan the working tree for secrets
+        run: |
+          "$RUNNER_TEMP/gitleaks" dir . --redact --no-banner --exit-code 1
+
+      # Advisories, licences and sources, as deny.toml sets them. Worth having beside Dependabot
+      # alerts: an alert notifies and a gate refuses.
+      - name: Check the dependency tree
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+  # Single aggregation gate: passes if no job failed or was cancelled, and a skipped job counts as
+  # a pass, exactly as GitHub treats a skipped required check. This is the one required status
+  # check, so branch protection stays stable as jobs are added.
+  ci-gate:
+    name: CI Passed
+    needs:
+      - pre-commit
+      - tests
+      - ruff-compat
+      - build
+      - security
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Evaluate CI job results
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<<"$NEEDS_JSON"
+          jq -e 'all(.[]; .result == "success" or .result == "skipped")' <<<"$NEEDS_JSON" >/dev/null

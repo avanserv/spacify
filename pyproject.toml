@@ -1,0 +1,41 @@
+# Packages the Rust binary as a Python wheel, so `pip install spacify` and pre-commit's Python
+# hooks get a prebuilt executable. The version is read from Cargo.toml, which Release Please owns.
+[build-system]
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[project]
+name = "spacify"
+description = "A fast formatter for the vertical rhythm of Python code, complementary to ruff"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.9"
+keywords = ["python", "formatter", "blank-lines", "ruff", "pre-commit"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/avanserv/spacify"
+Changelog = "https://github.com/avanserv/spacify/blob/main/CHANGELOG.md"
+
+[tool.maturin]
+bindings = "bin"
+strip = true
+# The sdist holds what building the wheel needs: repository tooling stays in the repository.
+exclude = [
+    { path = ".*", format = "sdist" },
+    { path = ".github/**", format = "sdist" },
+    { path = "scripts/**", format = "sdist" },
+    { path = "CLAUDE.md", format = "sdist" },
+    { path = "Makefile", format = "sdist" },
+    { path = "deny.toml", format = "sdist" },
+    { path = "release-please-config.json", format = "sdist" },
+]

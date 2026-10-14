@@ -1,0 +1,3 @@
+# The project name reads as a typo of "specify" to codespell.
+[codespell]
+ignore-words-list = spacify
