@@ -45,7 +45,7 @@ fn check_fails_without_writing() {
     let dir = project(&[("a.py", UNFORMATTED)]);
     let output = spacify(&dir, &["--check"], None);
     assert_eq!(output.status.code(), Some(1));
-    // The path keeps the platform's separator, `.\\a.py` on Windows.
+    // The path keeps the platform's separator, `.\a.py` on Windows.
     assert!(String::from_utf8_lossy(&output.stdout).contains("Would reformat: ."));
     assert!(String::from_utf8_lossy(&output.stdout).contains("a.py"));
     assert_eq!(fs::read_to_string(dir.path().join("a.py")).unwrap(), UNFORMATTED);
