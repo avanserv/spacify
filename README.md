@@ -95,7 +95,7 @@ Each rule can be turned on or off. They all apply to sibling statements in the s
 | `blank-before-block` | At least one blank line before `if`, `for`, `while`, `try`, `with` and `match` (including the `async` forms) when another statement comes before them. |
 | `blank-after-block` | At least one blank line after one of those blocks, before the next statement. |
 | `blank-before-exit` | At least one blank line before `return`, `raise`, `break`, `continue` and a bare `yield`, in blocks of `exit-min-block-statements` (default 3) or more statements. |
-| `collapse-groups` | No blank line between two single-line statements of the same kind: assignments, augmented assignments, calls, `del`, `assert`, `global`/`nonlocal`. |
+| `collapse-groups` | No blank line between two single-line statements of the same kind: assignments, augmented assignments, calls, `del`, `assert`, `global`/`nonlocal`. Outside every function and class, an assignment whose target names all have an uppercase letter and no lowercase one (`MAX = 3`, `T = TypeVar("T")`, `A, *REST = items`) is a constant, a kind apart from other assignments. |
 
 The added blank lines take priority over `collapse-groups`. A few places are never touched:
 
