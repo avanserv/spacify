@@ -19,6 +19,9 @@ pub enum Kind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Group {
     Assign,
+    /// An assignment to `UPPER_CASE` names outside every function and class: configuration, which
+    /// reads apart from the statements setting the module up, such as `logger = getLogger(__name__)`.
+    Constant,
     AugAssign,
     Call,
     Del,

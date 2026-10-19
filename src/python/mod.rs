@@ -50,13 +50,14 @@ pub fn format_source(source: &str, rules: &Rules, stub: bool) -> Result<Option<S
 
     let lines: Vec<&str> = source.split_inclusive('\n').collect();
     let context = Context {
+        source,
         disabled: disabled_prefix(&lines),
         lines,
         rules,
         module_max: if stub { 1 } else { 2 },
     };
     let mut edits = Vec::new();
-    context.container(root, &mut edits);
+    context.container(root, true, &mut edits);
 
     if edits.is_empty() {
         return Ok(None);
@@ -65,6 +66,7 @@ pub fn format_source(source: &str, rules: &Rules, stub: bool) -> Result<Option<S
 }
 
 struct Context<'a> {
+    source: &'a str,
     lines: Vec<&'a str>,
     /// `disabled[r]` counts the rows before `r` inside a `fmt: off` or `spacify: off` region.
     disabled: Vec<u32>,
@@ -74,7 +76,8 @@ struct Context<'a> {
 
 impl Context<'_> {
     /// Visits a `module` or a `block`: the gaps between its statements, then its nested blocks.
-    fn container(&self, node: Node, edits: &mut Vec<Edit>) {
+    /// `module_scope` holds outside every function and class, even inside a top-level `if`.
+    fn container(&self, node: Node, module_scope: bool, edits: &mut Vec<Edit>) {
         let mut cursor = node.walk();
         let statements: Vec<Node> = node
             .named_children(&mut cursor)
@@ -91,33 +94,34 @@ impl Context<'_> {
 
             for (index, pair) in statements.windows(2).enumerate() {
                 let docstring = index == 0 && has_docstring && is_docstring(pair[0]);
-                if !docstring && let Some(edit) = self.gap(pair[0], pair[1], statements.len(), module) {
+                if !docstring && let Some(edit) = self.gap(pair[0], pair[1], statements.len(), module, module_scope) {
                     edits.push(edit);
                 }
             }
         }
 
         for statement in statements {
-            self.descend(statement, edits);
+            self.descend(statement, module_scope, edits);
         }
     }
 
     /// Finds the blocks inside a compound statement, through its clauses and decorators.
-    fn descend(&self, node: Node, edits: &mut Vec<Edit>) {
+    fn descend(&self, node: Node, module_scope: bool, edits: &mut Vec<Edit>) {
+        let module_scope = module_scope && !node.kind().ends_with("_definition");
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
             let kind = child.kind();
             if kind == "block" {
-                self.container(child, edits);
+                self.container(child, module_scope, edits);
             } else if kind.ends_with("_clause") || kind.ends_with("_definition") {
-                self.descend(child, edits);
+                self.descend(child, module_scope, edits);
             }
         }
     }
 
-    fn gap(&self, prev: Node, next: Node, block_len: usize, module: bool) -> Option<Edit> {
-        let prev_kind = classify(prev);
-        let next_kind = classify(next);
+    fn gap(&self, prev: Node, next: Node, block_len: usize, module: bool, module_scope: bool) -> Option<Edit> {
+        let prev_kind = self.classify(prev, module_scope);
+        let next_kind = self.classify(next, module_scope);
         if prev_kind == Kind::Definition || next_kind == Kind::Definition {
             return None;
         }
@@ -167,29 +171,64 @@ impl Context<'_> {
                 .iter()
                 .any(|&row| has_fmt_skip(self.lines[row]))
     }
+
+    fn classify(&self, node: Node, module_scope: bool) -> Kind {
+        match node.kind() {
+            "if_statement" | "for_statement" | "while_statement" | "try_statement" | "with_statement"
+            | "match_statement" => Kind::Compound,
+            "function_definition" | "class_definition" | "decorated_definition" => Kind::Definition,
+            "return_statement" | "raise_statement" | "break_statement" | "continue_statement" => Kind::Exit,
+            "import_statement" | "import_from_statement" | "future_import_statement" => Kind::Import,
+            "delete_statement" => Kind::Simple(Group::Del),
+            "assert_statement" => Kind::Simple(Group::Assert),
+            "global_statement" | "nonlocal_statement" => Kind::Simple(Group::Scope),
+            "expression_statement" if node.named_child_count() == 1 => {
+                let Some(child) = node.named_child(0) else {
+                    return Kind::Other;
+                };
+                match child.kind() {
+                    "assignment" if module_scope && self.assigns_constants(child) => Kind::Simple(Group::Constant),
+                    "assignment" => Kind::Simple(Group::Assign),
+                    "augmented_assignment" => Kind::Simple(Group::AugAssign),
+                    "call" | "await" => Kind::Simple(Group::Call),
+                    "yield" => Kind::Exit,
+                    _ => Kind::Other,
+                }
+            }
+            _ => Kind::Other,
+        }
+    }
+
+    /// Whether every name `assignment` binds, through a chain such as `A = B = 1`, is a constant
+    /// name: `A = 1`, `A: int = 1`, `A, *B = items`, `[A, (B, C)] = rows`.
+    fn assigns_constants(&self, assignment: Node) -> bool {
+        assignment
+            .child_by_field_name("left")
+            .is_some_and(|left| self.binds_constants(left))
+            && assignment
+                .child_by_field_name("right")
+                .is_none_or(|right| right.kind() != "assignment" || self.assigns_constants(right))
+    }
+
+    fn binds_constants(&self, target: Node) -> bool {
+        match target.kind() {
+            "identifier" => is_constant_name(&self.source[target.byte_range()]),
+            "pattern_list" | "tuple_pattern" | "list_pattern" => {
+                let mut cursor = target.walk();
+                target.named_child_count() > 0
+                    && target
+                        .named_children(&mut cursor)
+                        .all(|child| self.binds_constants(child))
+            }
+            "list_splat_pattern" => target.named_child(0).is_some_and(|name| self.binds_constants(name)),
+            _ => false,
+        }
+    }
 }
 
-fn classify(node: Node) -> Kind {
-    match node.kind() {
-        "if_statement" | "for_statement" | "while_statement" | "try_statement" | "with_statement"
-        | "match_statement" => Kind::Compound,
-        "function_definition" | "class_definition" | "decorated_definition" => Kind::Definition,
-        "return_statement" | "raise_statement" | "break_statement" | "continue_statement" => Kind::Exit,
-        "import_statement" | "import_from_statement" | "future_import_statement" => Kind::Import,
-        "delete_statement" => Kind::Simple(Group::Del),
-        "assert_statement" => Kind::Simple(Group::Assert),
-        "global_statement" | "nonlocal_statement" => Kind::Simple(Group::Scope),
-        "expression_statement" if node.named_child_count() == 1 => {
-            match node.named_child(0).map(|child| child.kind()) {
-                Some("assignment") => Kind::Simple(Group::Assign),
-                Some("augmented_assignment") => Kind::Simple(Group::AugAssign),
-                Some("call" | "await") => Kind::Simple(Group::Call),
-                Some("yield") => Kind::Exit,
-                _ => Kind::Other,
-            }
-        }
-        _ => Kind::Other,
-    }
+/// An uppercase letter and no lowercase one, in any script: `MAX`, `T`, `_A1`, `ÉTÉ`.
+fn is_constant_name(name: &str) -> bool {
+    name.chars().any(char::is_uppercase) && !name.chars().any(char::is_lowercase)
 }
 
 fn is_docstring(node: Node) -> bool {
