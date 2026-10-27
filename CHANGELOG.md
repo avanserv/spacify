@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/avanserv/spacify/compare/v0.2.0...v0.2.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* Report bare carriage return line endings honestly ([#9](https://github.com/avanserv/spacify/issues/9)) ([b84f9a7](https://github.com/avanserv/spacify/commit/b84f9a78c9f0555563bc52e293d7151a346aa786))
+
 ## [0.2.0](https://github.com/avanserv/spacify/compare/v0.1.1...v0.2.0) (2026-10-19)
 
 
