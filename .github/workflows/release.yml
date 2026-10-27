@@ -180,7 +180,8 @@ jobs:
         run: |
           version="${TAG#v}"
           sed -i -E "s/spacify==[0-9A-Za-z.+-]+/spacify==${version}/" pyproject.toml
-          sed -i -E "s/rev: v[0-9A-Za-z.+-]+/rev: ${TAG}/" README.md
+          # Only the rev under spacify's own repo line: the README pins other hooks too.
+          sed -i -E "/avanserv\/spacify-pre-commit/{n;s/rev: v[0-9A-Za-z.+-]+/rev: ${TAG}/}" README.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # The mirror is seeded with the first version, so the first release has nothing to commit.
