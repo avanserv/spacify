@@ -129,6 +129,27 @@ fn reads_rules_from_pyproject() {
 }
 
 #[test]
+fn leaves_a_disabled_language_alone() {
+    let dir = project(&[("spacify.toml", "languages = []\n"), ("a.py", UNFORMATTED)]);
+    assert!(spacify(&dir, &["--check"], None).status.success());
+    assert!(spacify(&dir, &["--check", "a.py"], None).status.success());
+    let output = spacify(&dir, &["-"], Some(UNFORMATTED));
+    assert_eq!(String::from_utf8_lossy(&output.stdout), UNFORMATTED);
+}
+
+#[test]
+fn reads_language_rule_overrides() {
+    let dir = project(&[
+        (
+            "pyproject.toml",
+            "[tool.spacify.rules]\nblank-before-block = false\n\n[tool.spacify.python.rules]\nblank-before-block = true\n",
+        ),
+        ("a.py", UNFORMATTED),
+    ]);
+    assert_eq!(spacify(&dir, &["--check"], None).status.code(), Some(1));
+}
+
+#[test]
 fn rejects_unknown_config_keys() {
     let dir = project(&[("spacify.toml", "[rules]\nno-such-rule = true\n"), ("a.py", FORMATTED)]);
     let output = spacify(&dir, &[], None);

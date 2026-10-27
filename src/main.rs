@@ -10,8 +10,8 @@ use clap::Parser;
 use rayon::prelude::*;
 use similar::TextDiff;
 
-use spacify::config::{Config, Rules};
-use spacify::format_source;
+use spacify::config::Config;
+use spacify::{SourceKind, format_source};
 
 /// Formats the vertical rhythm of Python code: blank lines around logical blocks.
 #[derive(Parser)]
@@ -37,7 +37,7 @@ struct Cli {
     #[arg(long)]
     force_exclude: bool,
 
-    /// The path of the file read from stdin, for messages, exclusion and stub detection.
+    /// The path of the file read from stdin, for messages, exclusion and its language.
     #[arg(long, value_name = "PATH")]
     stdin_filename: Option<PathBuf>,
 
@@ -71,13 +71,13 @@ fn run(cli: &Cli) -> Result<ExitCode> {
     let exclude = walk::Exclude::new(&config, &cwd)?;
 
     if cli.paths.len() == 1 && cli.paths[0].as_os_str() == "-" {
-        return format_stdin(cli, &config.rules, &exclude, &cwd);
+        return format_stdin(cli, &config, &exclude, &cwd);
     }
 
-    let files = walk::collect(&cli.paths, &exclude, &cwd, cli.force_exclude);
+    let files = walk::collect(&cli.paths, &config, &exclude, &cwd, cli.force_exclude);
     let outcomes: Vec<Outcome> = files
         .par_iter()
-        .map(|path| format_file(cli, &config.rules, path))
+        .map(|(path, kind)| format_file(cli, &config, path, *kind))
         .collect();
 
     let changed = outcomes.iter().filter(|o| matches!(o, Outcome::Changed)).count();
@@ -96,7 +96,7 @@ fn run(cli: &Cli) -> Result<ExitCode> {
     })
 }
 
-fn format_file(cli: &Cli, rules: &Rules, path: &Path) -> Outcome {
+fn format_file(cli: &Cli, config: &Config, path: &Path, kind: SourceKind) -> Outcome {
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) => {
@@ -105,7 +105,7 @@ fn format_file(cli: &Cli, rules: &Rules, path: &Path) -> Outcome {
         }
     };
 
-    let formatted = match format_source(&source, rules, is_stub(path)) {
+    let formatted = match format_source(&source, kind, &config.rules_for(kind.language())) {
         Ok(Some(formatted)) => formatted,
         Ok(None) => return Outcome::Unchanged,
         Err(error) => {
@@ -128,16 +128,19 @@ fn format_file(cli: &Cli, rules: &Rules, path: &Path) -> Outcome {
     Outcome::Changed
 }
 
-fn format_stdin(cli: &Cli, rules: &Rules, exclude: &walk::Exclude, cwd: &Path) -> Result<ExitCode> {
+fn format_stdin(cli: &Cli, config: &Config, exclude: &walk::Exclude, cwd: &Path) -> Result<ExitCode> {
     let mut source = String::new();
     io::stdin().read_to_string(&mut source).context("cannot read stdin")?;
     let name = cli.stdin_filename.as_deref().unwrap_or(Path::new("-"));
+    let kind = SourceKind::from_path(name).unwrap_or(SourceKind::Python);
 
-    let skip = cli.force_exclude && cli.stdin_filename.is_some() && exclude.matches(name, cwd);
+    let skip = !config.is_enabled(kind.language())
+        || (cli.force_exclude && cli.stdin_filename.is_some() && exclude.matches(name, cwd));
     let formatted = if skip {
         None
     } else {
-        format_source(&source, rules, is_stub(name)).with_context(|| format!("cannot format {}", name.display()))?
+        format_source(&source, kind, &config.rules_for(kind.language()))
+            .with_context(|| format!("cannot format {}", name.display()))?
     };
 
     let Some(formatted) = formatted else {
@@ -158,10 +161,6 @@ fn format_stdin(cli: &Cli, rules: &Rules, exclude: &walk::Exclude, cwd: &Path) -
         return Ok(ExitCode::SUCCESS);
     }
     Ok(ExitCode::FAILURE)
-}
-
-fn is_stub(path: &Path) -> bool {
-    path.extension().is_some_and(|ext| ext == "pyi")
 }
 
 fn print_diff(source: &str, formatted: &str, path: &Path) {
