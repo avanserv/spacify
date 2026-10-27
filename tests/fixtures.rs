@@ -1,4 +1,4 @@
-//! Each `tests/fixtures/<name>.py` formats to `<name>.expected.py`, and the expected file is a
+//! Each `tests/fixtures/<name>.<ext>` formats to `<name>.expected.<ext>`, and the expected file is a
 //! fixed point. Set `SPACIFY_BLESS=1` to rewrite the expected files from the current output.
 
 use std::fs;

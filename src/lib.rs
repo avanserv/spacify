@@ -7,6 +7,7 @@ mod gaps;
 pub mod language;
 mod python;
 mod rules;
+mod rust;
 
 pub use config::Rules;
 pub use gaps::FormatError;
@@ -21,5 +22,6 @@ pub fn format_source(source: &str, kind: SourceKind, rules: &Rules) -> Result<Op
     match kind {
         SourceKind::Python => python::format(source, rules, false),
         SourceKind::PythonStub => python::format(source, rules, true),
+        SourceKind::Rust => rust::format(source, rules),
     }
 }

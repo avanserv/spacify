@@ -85,6 +85,7 @@ pub struct Config {
     /// Shared by every language, under its own overrides.
     pub rules: Rules,
     pub python: LanguageConfig,
+    pub rust: LanguageConfig,
     /// The directory exclusion patterns are relative to. Filled in on load.
     #[serde(skip)]
     pub root: PathBuf,
@@ -98,6 +99,7 @@ impl Default for Config {
             languages: Language::ALL.to_vec(),
             rules: Rules::default(),
             python: LanguageConfig::default(),
+            rust: LanguageConfig::default(),
             root: PathBuf::new(),
         }
     }
@@ -170,6 +172,7 @@ impl Config {
     pub fn rules_for(&self, language: Language) -> Rules {
         let overrides = match language {
             Language::Python => &self.python.rules,
+            Language::Rust => &self.rust.rules,
         };
         let shared = &self.rules;
         Rules {

@@ -21,9 +21,11 @@ check() {
     "$spacify" --check --quiet . || { echo "spacify would still change $1" >&2; exit 1; }
 }
 
-cp -r "$src" "$work/ruff-first"
-cp -r "$src" "$work/spacify-first"
-cp -r "$src" "$work/spacify-only"
+# A spacify.toml enabling Python alone keeps the other languages in the tree out of it.
+for copy in ruff-first spacify-first spacify-only; do
+    cp -r "$src" "$work/$copy"
+    echo 'languages = ["python"]' > "$work/$copy/spacify.toml"
+done
 
 (
     cd "$work/ruff-first"

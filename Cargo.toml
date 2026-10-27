@@ -3,11 +3,11 @@ name = "spacify"
 version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
-description = "A fast formatter for the vertical rhythm of Python code, complementary to ruff"
+description = "A fast formatter for the vertical rhythm of Python and Rust code, complementary to ruff and rustfmt"
 license = "MIT"
 repository = "https://github.com/avanserv/spacify"
 readme = "README.md"
-keywords = ["python", "formatter", "blank-lines", "ruff"]
+keywords = ["python", "rust", "formatter", "blank-lines", "rustfmt"]
 categories = ["command-line-utilities", "development-tools"]
 # The fixtures are test data, and the Python packaging files belong to the wheel, not the crate.
 exclude = ["tests/fixtures/", ".github/", "pyproject.toml"]
@@ -31,9 +31,11 @@ similar = "3.2.0"
 toml = "1.1.8"
 tree-sitter = "0.27.1"
 tree-sitter-python = "0.25.0"
+tree-sitter-rust = "0.24.2"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+proc-macro2 = "1.0.107"
 tempfile = "3.27.0"
 
 [profile.release]
