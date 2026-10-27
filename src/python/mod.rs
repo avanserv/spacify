@@ -1,13 +1,11 @@
-mod rules;
-
 use std::cell::RefCell;
-use std::fmt;
 
 use tree_sitter::{Node, Parser};
 
 use crate::config::Rules;
 use crate::edit::{self, Edit};
-use rules::{Gap, Group, Kind};
+use crate::gaps::{Directives, FormatError, Source, Statement, first_error_row, last_code_row};
+use crate::rules::{Group, Kind};
 
 thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new({
@@ -19,36 +17,15 @@ thread_local! {
     });
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FormatError {
-    /// One-based line of the first syntax error.
-    Syntax(usize),
-    /// A line ending that is a `\r` alone, which Python accepts and the parser does not.
-    LoneCarriageReturn,
-    Parse,
-}
-
-impl fmt::Display for FormatError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Syntax(line) => write!(f, "syntax error on line {line}"),
-            Self::LoneCarriageReturn => f.write_str(
-                "line endings that are a bare carriage return are not supported: convert the file to \\n or \\r\\n",
-            ),
-            Self::Parse => f.write_str("the parser gave up on this file"),
-        }
-    }
-}
-
-impl std::error::Error for FormatError {}
+const DIRECTIVES: Directives = Directives {
+    prefix: "#",
+    off: &["fmt:off", "spacify:off"],
+    on: &["fmt:on", "spacify:on"],
+};
 
 /// Formats Python `source`, returning `None` when it is already formatted. A `stub` (`.pyi`) gets
 /// ruff's stub ceiling of one blank line at module level.
-pub fn format_source(source: &str, rules: &Rules, stub: bool) -> Result<Option<String>, FormatError> {
-    if source.split("\r\n").any(|part| part.contains('\r')) {
-        return Err(FormatError::LoneCarriageReturn);
-    }
-
+pub(crate) fn format(source: &str, rules: &Rules, stub: bool) -> Result<Option<String>, FormatError> {
     let tree = PARSER
         .with_borrow_mut(|parser| parser.parse(source, None))
         .ok_or(FormatError::Parse)?;
@@ -57,11 +34,10 @@ pub fn format_source(source: &str, rules: &Rules, stub: bool) -> Result<Option<S
         return Err(FormatError::Syntax(first_error_row(root) + 1));
     }
 
-    let lines: Vec<&str> = source.split_inclusive('\n').collect();
     let context = Context {
         source,
-        disabled: disabled_prefix(&lines),
-        lines,
+        // Python comments never span several rows.
+        rows: Source::new(source, &DIRECTIVES, []),
         rules,
         module_max: if stub { 1 } else { 2 },
     };
@@ -76,9 +52,7 @@ pub fn format_source(source: &str, rules: &Rules, stub: bool) -> Result<Option<S
 
 struct Context<'a> {
     source: &'a str,
-    lines: Vec<&'a str>,
-    /// `disabled[r]` counts the rows before `r` inside a `fmt: off` or `spacify: off` region.
-    disabled: Vec<u32>,
+    rows: Source<'a>,
     rules: &'a Rules,
     module_max: usize,
 }
@@ -129,56 +103,26 @@ impl Context<'_> {
     }
 
     fn gap(&self, prev: Node, next: Node, block_len: usize, module: bool, module_scope: bool) -> Option<Edit> {
-        let prev_kind = self.classify(prev, module_scope);
-        let next_kind = self.classify(next, module_scope);
-        if prev_kind == Kind::Definition || next_kind == Kind::Definition {
-            return None;
-        }
-
-        let prev_start = prev.start_position().row;
-        let prev_end = last_code_row(prev);
-        let next_start = next.start_position().row;
-        if next_start <= prev_end || self.is_disabled(prev_start, prev_end, next_start) {
-            return None;
-        }
-
-        // Comments directly above the next statement, at its indentation or less, belong to it:
-        // the blank line goes above them, never between them and their statement.
-        let indent = next.start_position().column;
-        let mut row = next_start;
-        while row > prev_end + 1 && comment_indent(self.lines[row - 1]).is_some_and(|width| width <= indent) {
-            row -= 1;
-        }
-
-        let mut blank = 0;
-        while row - blank > prev_end + 1 && is_blank(self.lines[row - blank - 1]) {
-            blank += 1;
-        }
-
-        let gap = Gap {
-            prev: prev_kind,
-            next: next_kind,
-            blank,
-            has_comment: (prev_end + 1..next_start).any(|r| comment_indent(self.lines[r]).is_some()),
-            both_single_line: prev_start == prev_end && next_start == last_code_row(next),
+        let max = if module { self.module_max } else { 1 };
+        self.rows.gap(
+            self.statement(prev, module_scope),
+            self.statement(next, module_scope),
             block_len,
-            max: if module { self.module_max } else { 1 },
-        };
-
-        rules::desired(&gap, self.rules)
-            .filter(|&desired| desired != blank)
-            .map(|desired| Edit {
-                row,
-                current: blank,
-                desired,
-            })
+            max,
+            self.rules,
+        )
     }
 
-    fn is_disabled(&self, prev_start: usize, prev_end: usize, next_start: usize) -> bool {
-        self.disabled[next_start + 1] > self.disabled[prev_end]
-            || [prev_start, prev_end, next_start]
-                .iter()
-                .any(|&row| has_fmt_skip(self.lines[row]))
+    fn statement(&self, node: Node, module_scope: bool) -> Statement {
+        let start_row = node.start_position().row;
+        let end_row = last_code_row(node, |kind| kind == "comment");
+        Statement {
+            kind: self.classify(node, module_scope),
+            start_row,
+            end_row,
+            column: node.start_position().column,
+            skip: has_fmt_skip(self.rows.lines[start_row]) || has_fmt_skip(self.rows.lines[end_row]),
+        }
     }
 
     fn classify(&self, node: Node, module_scope: bool) -> Kind {
@@ -248,87 +192,11 @@ fn is_docstring(node: Node) -> bool {
             .is_some_and(|child| matches!(child.kind(), "string" | "concatenated_string"))
 }
 
-/// The row a statement's code ends on. Tree-sitter can file a trailing comment inside the block it
-/// follows, and such a comment belongs to the gap after the statement instead.
-fn last_code_row(node: Node) -> usize {
-    let mut node = node;
-    loop {
-        let mut cursor = node.walk();
-        let last = node
-            .children(&mut cursor)
-            .filter(|child| child.kind() != "comment")
-            .last();
-        match last {
-            Some(child) => node = child,
-            None => return node.end_position().row,
-        }
-    }
-}
-
-fn first_error_row(root: Node) -> usize {
-    let mut cursor = root.walk();
-    loop {
-        let node = cursor.node();
-        if node.is_error() || node.is_missing() {
-            return node.start_position().row;
-        }
-        // Only a subtree that holds an error is worth entering.
-        if node.has_error() && cursor.goto_first_child() {
-            continue;
-        }
-        while !cursor.goto_next_sibling() {
-            if !cursor.goto_parent() {
-                return root.start_position().row;
-            }
-        }
-    }
-}
-
-fn is_blank(line: &str) -> bool {
-    line.trim().is_empty()
-}
-
-/// The indentation of a comment-only line, in bytes, or `None` for any other line.
-fn comment_indent(line: &str) -> Option<usize> {
-    let code = line.trim_start();
-    code.starts_with('#').then(|| line.len() - code.len())
-}
-
-fn directive(line: &str) -> Option<String> {
-    let comment = line.trim().strip_prefix('#')?;
-    Some(comment.chars().filter(|c| !c.is_whitespace()).collect())
-}
-
 fn has_fmt_skip(line: &str) -> bool {
     line.find('#').is_some_and(|hash| {
         let comment: String = line[hash..].chars().filter(|c| !c.is_whitespace()).collect();
         comment.contains("fmt:skip")
     })
-}
-
-/// Prefix counts of the rows inside `fmt: off` / `spacify: off` regions, the markers included.
-fn disabled_prefix(lines: &[&str]) -> Vec<u32> {
-    let mut prefix = Vec::with_capacity(lines.len() + 2);
-    prefix.push(0);
-    let mut off = false;
-    let mut total = 0;
-    for line in lines {
-        match directive(line).as_deref() {
-            Some("fmt:off" | "spacify:off") => off = true,
-            Some("fmt:on" | "spacify:on") => {
-                total += 1;
-                prefix.push(total);
-                off = false;
-                continue;
-            }
-            _ => {}
-        }
-        total += u32::from(off);
-        prefix.push(total);
-    }
-    // The row past the end, for a gap that ends on the last line.
-    prefix.push(total);
-    prefix
 }
 
 #[cfg(test)]
@@ -352,30 +220,5 @@ mod tests {
         assert!(has_fmt_skip("x = 1  # noqa: E501 # fmt: skip\n"));
         assert!(!has_fmt_skip("x = 1  # fmt: off\n"));
         assert!(!has_fmt_skip("x = 1\n"));
-    }
-
-    #[test]
-    fn directives_ignore_whitespace() {
-        assert_eq!(directive("  # fmt: off\n").as_deref(), Some("fmt:off"));
-        assert_eq!(directive("#spacify:on").as_deref(), Some("spacify:on"));
-        assert_eq!(directive("x = 1  # fmt: off\n"), None);
-    }
-
-    #[test]
-    fn disabled_regions_count_their_markers() {
-        let lines = ["a\n", "# fmt: off\n", "b\n", "# fmt: on\n", "c\n"];
-        assert_eq!(disabled_prefix(&lines), [0, 0, 1, 2, 3, 3, 3]);
-    }
-
-    #[test]
-    fn an_unterminated_region_runs_to_the_end() {
-        let lines = ["a\n", "# spacify: off\n", "b\n"];
-        assert_eq!(disabled_prefix(&lines), [0, 0, 1, 2, 2]);
-    }
-
-    #[test]
-    fn an_on_marker_alone_disables_only_itself() {
-        let lines = ["a\n", "# fmt: on\n", "b\n"];
-        assert_eq!(disabled_prefix(&lines), [0, 0, 1, 1, 1]);
     }
 }

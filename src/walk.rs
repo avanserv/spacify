@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ignore::WalkBuilder;
 
+use spacify::SourceKind;
 use spacify::config::Config;
 
 /// Exclusion patterns as ruff reads them: one with a `/` matches the path relative to the
@@ -46,18 +47,33 @@ impl Exclude {
     }
 }
 
-pub fn is_python(path: &Path) -> bool {
-    path.extension().is_some_and(|ext| ext == "py" || ext == "pyi")
+/// The kind of a file `collect` keeps, or `None` to leave it out: the language must be enabled. A file
+/// named outright with an unknown extension is formatted as Python, as it always has been.
+fn kind_of(path: &Path, config: &Config, named: bool) -> Option<SourceKind> {
+    let kind = match SourceKind::from_path(path) {
+        Some(kind) => kind,
+        None if named => SourceKind::Python,
+        None => return None,
+    };
+    config.is_enabled(kind.language()).then_some(kind)
 }
 
-/// The Python files under `paths`. A file named outright is kept even when excluded, unless
-/// `force_exclude` is set, which is what a git hook wants since it names every staged file.
-pub fn collect(paths: &[PathBuf], exclude: &Exclude, cwd: &Path, force_exclude: bool) -> Vec<PathBuf> {
+/// The files under `paths` in an enabled language. A file named outright is kept even when excluded,
+/// unless `force_exclude` is set, which is what a git hook wants since it names every staged file.
+pub fn collect(
+    paths: &[PathBuf],
+    config: &Config,
+    exclude: &Exclude,
+    cwd: &Path,
+    force_exclude: bool,
+) -> Vec<(PathBuf, SourceKind)> {
     let mut files = Vec::new();
     for path in paths {
         if !path.is_dir() {
-            if !(force_exclude && exclude.matches(path, cwd)) {
-                files.push(path.clone());
+            if !(force_exclude && exclude.matches(path, cwd))
+                && let Some(kind) = kind_of(path, config, true)
+            {
+                files.push((path.clone(), kind));
             }
             continue;
         }
@@ -70,8 +86,11 @@ pub fn collect(paths: &[PathBuf], exclude: &Exclude, cwd: &Path, force_exclude: 
         files.extend(
             walker
                 .filter_map(Result::ok)
-                .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()) && is_python(entry.path()))
-                .map(ignore::DirEntry::into_path),
+                .filter(|entry| entry.file_type().is_some_and(|kind| kind.is_file()))
+                .filter_map(|entry| {
+                    let kind = kind_of(entry.path(), config, false)?;
+                    Some((entry.into_path(), kind))
+                }),
         );
     }
 
