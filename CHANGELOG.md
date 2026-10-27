@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/avanserv/spacify/compare/v0.2.1...v0.3.0) (2026-10-27)
+
+
+### Features
+
+* Format Rust code ([#14](https://github.com/avanserv/spacify/issues/14)) ([9f9755a](https://github.com/avanserv/spacify/commit/9f9755a0873b6f4a2ba103a39790e76c03047e12))
+
 ## [0.2.1](https://github.com/avanserv/spacify/compare/v0.2.0...v0.2.1) (2026-10-27)
 
 
