@@ -13,7 +13,7 @@ use similar::TextDiff;
 use spacify::config::Config;
 use spacify::{SourceKind, format_source};
 
-/// Formats the vertical rhythm of Python code: blank lines around logical blocks.
+/// Formats the vertical rhythm of Python and Rust code: blank lines around logical blocks.
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
