@@ -1,9 +1,24 @@
 .DEFAULT_GOAL := help
 
-# The CPython checkout the ruff round trip runs over. Its Lib/test is dropped: it holds files that
-# are invalid Python on purpose.
+# The CPython checkout the ruff round trip runs over, one directory per tag so a bump re-clones.
 CPYTHON_TAG := v3.14.8
-CPYTHON_DIR := target/cpython
+CPYTHON_DIR := target/cpython-$(CPYTHON_TAG)
+# The interpreter scripts/ast-equal.py parses with: it must accept everything in CPYTHON_TAG's Lib.
+export COMPAT_PYTHON := 3.14
+
+# Files the round trip cannot use. A CPython bump that adds another one fails `make compat`, which
+# is the news: decide whether it belongs here.
+# Invalid on purpose, or not UTF-8.
+CPYTHON_SKIP := \
+	test/tokenizedata/badsyntax_pep3120.py \
+	test/tokenizedata/badsyntax_3131.py \
+	test/tokenizedata/bad_coding2.py \
+	test/encoded_modules/module_koi8_r.py \
+	test/encoded_modules/module_iso_8859_1.py
+# Valid Python that tree-sitter-python rejects: README.md lists the constructs under "Known limits".
+CPYTHON_SKIP += test/test_annotationlib.py test/test_type_params.py test/test_compile.py
+# Ruff 0.16.9 needs two passes to settle a `for` target here, with or without spacify.
+CPYTHON_SKIP += test/test_unicodedata.py
 
 .PHONY: help install format lint test compat bench build hooks check clean
 
@@ -27,7 +42,7 @@ test: ## Run the test suite
 
 $(CPYTHON_DIR):
 	git -c advice.detachedHead=false clone --quiet --depth 1 --branch $(CPYTHON_TAG) https://github.com/python/cpython.git $@
-	rm -rf $@/Lib/test
+	cd $@/Lib && rm $(CPYTHON_SKIP)
 
 compat: $(CPYTHON_DIR) ## Check that ruff and spacify agree, over the fixtures and CPython's Lib
 	cargo build --release --locked

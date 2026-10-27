@@ -82,6 +82,16 @@ fn syntax_error_exits_2() {
 }
 
 #[test]
+fn lone_carriage_returns_exit_2_untouched() {
+    let source = "x = 1\rif x:\r    pass\r";
+    let dir = project(&[("a.py", source)]);
+    let output = spacify(&dir, &[], None);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("bare carriage return"));
+    assert_eq!(fs::read_to_string(dir.path().join("a.py")).unwrap(), source);
+}
+
+#[test]
 fn skips_default_excludes_when_walking() {
     let dir = project(&[(".venv/lib/a.py", UNFORMATTED), ("build/b.py", UNFORMATTED)]);
     let output = spacify(&dir, &["--check"], None);

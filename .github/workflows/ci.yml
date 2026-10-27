@@ -95,7 +95,8 @@ jobs:
       - name: Install ruff
         run: uv tool install ruff==0.16.9
 
-      # The fixtures, then CPython's Lib, in both orders. Makefile names the CPython tag.
+      # The fixtures, then CPython's Lib, in both orders, plus the AST check. The Makefile names the
+      # CPython tag and the Python that parses it, which uv fetches.
       - name: Check that ruff and spacify agree
         run: make compat
 

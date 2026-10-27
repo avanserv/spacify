@@ -96,3 +96,75 @@ fn exit_threshold_is_configurable() {
     let formatted = format_source(source, &rules, false).unwrap().unwrap();
     assert_eq!(formatted, "def f(x):\n    x = 1\n\n    return x\n");
 }
+
+#[test]
+fn keeps_a_byte_order_mark() {
+    let source = "\u{feff}x = 1\nif x:\n    pass\n";
+    let formatted = format_source(source, &Rules::default(), false).unwrap().unwrap();
+    assert_eq!(formatted, "\u{feff}x = 1\n\nif x:\n    pass\n");
+}
+
+#[test]
+fn indents_with_tabs() {
+    let source = "def f(x):\n\ty = 1\n\tif y:\n\t\tpass\n\treturn y\n";
+    let formatted = format_source(source, &Rules::default(), false).unwrap().unwrap();
+    assert_eq!(formatted, "def f(x):\n\ty = 1\n\n\tif y:\n\t\tpass\n\n\treturn y\n");
+}
+
+/// Ruff drops a form feed and keeps its line as a blank one, so spacify counts it as blank too.
+#[test]
+fn counts_a_form_feed_line_as_blank() {
+    let source = "x = 1\n\x0c\nif x:\n    pass\n";
+    assert_eq!(format_source(source, &Rules::default(), false).unwrap(), None);
+    let source = "x = 1\n\x0cif x:\n    pass\n";
+    let formatted = format_source(source, &Rules::default(), false).unwrap().unwrap();
+    assert_eq!(formatted, "x = 1\n\n\x0cif x:\n    pass\n");
+}
+
+#[test]
+fn leaves_empty_and_comment_only_files_alone() {
+    for source in ["", "\n", "# a\n\n\n# b\n"] {
+        assert_eq!(
+            format_source(source, &Rules::default(), false).unwrap(),
+            None,
+            "{source:?}"
+        );
+    }
+}
+
+/// Tree-sitter reads this as a Python 2 print statement, but it is a valid Python 3 tuple, so
+/// spacify formats around it rather than refusing it.
+#[test]
+fn formats_around_a_print_chevron() {
+    let source = "print >>f, \"a\"\nif f:\n    pass\n";
+    let formatted = format_source(source, &Rules::default(), false).unwrap().unwrap();
+    assert_eq!(formatted, "print >>f, \"a\"\n\nif f:\n    pass\n");
+}
+
+/// Valid since Python 3.13 (PEP 696), but tree-sitter-python rejects it. A grammar upgrade that
+/// fails this test lifts the limit: update `README.md` and the Makefile's `CPYTHON_SKIP`.
+#[test]
+fn refuses_type_parameter_defaults() {
+    for source in [
+        "def f[T = int](): pass\n",
+        "class C[T = int]: pass\n",
+        "type A[T = int] = T\n",
+    ] {
+        assert_eq!(
+            format_source(source, &Rules::default(), false),
+            Err(FormatError::Syntax(1)),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
+fn refuses_lone_carriage_returns() {
+    for source in ["x = 1\rif x:\r    pass\r", "x = 1\r\ny = '''\r'''\r\n"] {
+        assert_eq!(
+            format_source(source, &Rules::default(), false),
+            Err(FormatError::LoneCarriageReturn),
+            "{source:?}"
+        );
+    }
+}

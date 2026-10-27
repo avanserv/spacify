@@ -55,8 +55,12 @@ files from the current output, then review the diff:
 SPACIFY_BLESS=1 cargo test --test fixtures
 ```
 
-`make compat` is the check that matters for ruff: both orders, over the fixtures and CPython.
-`make bench` times a check over CPython's `Lib` with hyperfine.
+Unit tests for a module's internals sit in a `tests` module at the bottom of its file.
+
+`make compat` is the check that matters for ruff: both orders, over the fixtures and CPython's `Lib`
+(the Makefile's `CPYTHON_SKIP` lists the files left out, and why). It also formats a copy with
+spacify alone and runs `scripts/ast-equal.py` to prove every file kept its AST. `make bench` times a
+check over CPython's `Lib` with hyperfine.
 
 ## Commits and pull requests
 

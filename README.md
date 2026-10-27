@@ -43,9 +43,10 @@ def load(paths):
     return total
 ```
 
-spacify never fights ruff. Every rule stays inside the blank-line bounds `ruff format` keeps, and
-CI runs both tools over CPython's standard library in both orders to check they reach a fixed point.
-Checking all of CPython's `Lib` takes under half a second on 8 cores.
+spacify never fights ruff. Every rule stays inside the blank-line bounds `ruff format` keeps, and CI
+runs both tools over CPython's standard library in both orders to check they reach a fixed point. It
+also checks that spacify leaves the AST of every file unchanged. Checking CPython's `Lib`, without
+its tests, takes under half a second on 8 cores.
 
 ## Install
 
@@ -85,6 +86,15 @@ The exit code is 0 on success, 1 when `--check` or `--diff` found changes, and 2
 a syntax error, in which case the file is left untouched. Directory walks respect `.gitignore` and
 skip the directories ruff skips by default. A file you name explicitly is always formatted, unless
 you also pass `--force-exclude`, which is what the hook does.
+
+## Known limits
+
+spacify parses with tree-sitter-python, which rejects a few valid constructs: type parameter
+defaults (`def f[T = int]()`, PEP 696), a parenthesised starred subscript (`a[*(b)]`), and an
+attribute access broken after its dot onto a line indented less than the statement. A file using one
+exits 2 and is left untouched. Files must be UTF-8, as for ruff, and line endings that are a bare
+`\r` are refused the same way. Python 2 `print` and `exec` statements are not rejected, since
+tree-sitter cannot tell some of them from valid Python 3 such as `print >>f, x`.
 
 ## Rules
 

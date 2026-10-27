@@ -37,3 +37,44 @@ pub fn apply(source: &str, edits: &mut [Edit]) -> String {
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn edit(row: usize, current: usize, desired: usize) -> Edit {
+        Edit { row, current, desired }
+    }
+
+    #[test]
+    fn inserts_into_an_empty_run() {
+        assert_eq!(apply("a\nb\n", &mut [edit(1, 0, 1)]), "a\n\nb\n");
+    }
+
+    #[test]
+    fn shrinks_a_run_to_nothing() {
+        assert_eq!(apply("a\n\n\nb\n", &mut [edit(3, 2, 0)]), "a\nb\n");
+    }
+
+    #[test]
+    fn shrinks_a_run_from_its_top() {
+        assert_eq!(apply("a\n\n  \nb\n", &mut [edit(3, 2, 1)]), "a\n  \nb\n");
+    }
+
+    #[test]
+    fn applies_edits_given_out_of_order() {
+        let mut edits = [edit(4, 1, 0), edit(1, 0, 1)];
+        assert_eq!(apply("a\nb\nc\n\nd\n", &mut edits), "a\n\nb\nc\nd\n");
+    }
+
+    #[test]
+    fn inserts_crlf_into_a_crlf_file() {
+        assert_eq!(apply("a\r\nb\r\n", &mut [edit(1, 0, 2)]), "a\r\n\r\n\r\nb\r\n");
+    }
+
+    #[test]
+    fn edits_above_a_last_line_without_a_newline() {
+        assert_eq!(apply("a\n\n\nb", &mut [edit(3, 2, 1)]), "a\n\nb");
+        assert_eq!(apply("a\nb", &mut [edit(1, 0, 1)]), "a\n\nb");
+    }
+}

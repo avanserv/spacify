@@ -23,6 +23,8 @@ thread_local! {
 pub enum FormatError {
     /// One-based line of the first syntax error.
     Syntax(usize),
+    /// A line ending that is a `\r` alone, which Python accepts and the parser does not.
+    LoneCarriageReturn,
     Parse,
 }
 
@@ -30,6 +32,9 @@ impl fmt::Display for FormatError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Syntax(line) => write!(f, "syntax error on line {line}"),
+            Self::LoneCarriageReturn => f.write_str(
+                "line endings that are a bare carriage return are not supported: convert the file to \\n or \\r\\n",
+            ),
             Self::Parse => f.write_str("the parser gave up on this file"),
         }
     }
@@ -40,6 +45,10 @@ impl std::error::Error for FormatError {}
 /// Formats Python `source`, returning `None` when it is already formatted. A `stub` (`.pyi`) gets
 /// ruff's stub ceiling of one blank line at module level.
 pub fn format_source(source: &str, rules: &Rules, stub: bool) -> Result<Option<String>, FormatError> {
+    if source.split("\r\n").any(|part| part.contains('\r')) {
+        return Err(FormatError::LoneCarriageReturn);
+    }
+
     let tree = PARSER
         .with_borrow_mut(|parser| parser.parse(source, None))
         .ok_or(FormatError::Parse)?;
@@ -320,4 +329,53 @@ fn disabled_prefix(lines: &[&str]) -> Vec<u32> {
     // The row past the end, for a gap that ends on the last line.
     prefix.push(total);
     prefix
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constant_names_have_an_uppercase_letter_and_no_lowercase_one() {
+        for name in ["MAX", "_A1", "ÉTÉ", "T", "__ALL__"] {
+            assert!(is_constant_name(name), "{name}");
+        }
+        for name in ["_", "_1", "Max", "__all__", "maxValue"] {
+            assert!(!is_constant_name(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn fmt_skip_is_found_in_any_spacing_and_after_other_comments() {
+        assert!(has_fmt_skip("x = 1  # fmt: skip\n"));
+        assert!(has_fmt_skip("x = 1  #fmt:skip\n"));
+        assert!(has_fmt_skip("x = 1  # noqa: E501 # fmt: skip\n"));
+        assert!(!has_fmt_skip("x = 1  # fmt: off\n"));
+        assert!(!has_fmt_skip("x = 1\n"));
+    }
+
+    #[test]
+    fn directives_ignore_whitespace() {
+        assert_eq!(directive("  # fmt: off\n").as_deref(), Some("fmt:off"));
+        assert_eq!(directive("#spacify:on").as_deref(), Some("spacify:on"));
+        assert_eq!(directive("x = 1  # fmt: off\n"), None);
+    }
+
+    #[test]
+    fn disabled_regions_count_their_markers() {
+        let lines = ["a\n", "# fmt: off\n", "b\n", "# fmt: on\n", "c\n"];
+        assert_eq!(disabled_prefix(&lines), [0, 0, 1, 2, 3, 3, 3]);
+    }
+
+    #[test]
+    fn an_unterminated_region_runs_to_the_end() {
+        let lines = ["a\n", "# spacify: off\n", "b\n"];
+        assert_eq!(disabled_prefix(&lines), [0, 0, 1, 2, 2]);
+    }
+
+    #[test]
+    fn an_on_marker_alone_disables_only_itself() {
+        let lines = ["a\n", "# fmt: on\n", "b\n"];
+        assert_eq!(disabled_prefix(&lines), [0, 0, 1, 1, 1]);
+    }
 }
