@@ -6,6 +6,8 @@ use tempfile::TempDir;
 
 const UNFORMATTED: &str = "x = 1\nif x:\n    pass\n";
 const FORMATTED: &str = "x = 1\n\nif x:\n    pass\n";
+const UNFORMATTED_RS: &str = "fn f(x: u32) {\n    let y = x;\n    if y > 0 {\n        g();\n    }\n}\n";
+const FORMATTED_RS: &str = "fn f(x: u32) {\n    let y = x;\n\n    if y > 0 {\n        g();\n    }\n}\n";
 
 fn spacify(dir: &TempDir, args: &[&str], stdin: Option<&str>) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_spacify"))
@@ -135,6 +137,44 @@ fn leaves_a_disabled_language_alone() {
     assert!(spacify(&dir, &["--check", "a.py"], None).status.success());
     let output = spacify(&dir, &["-"], Some(UNFORMATTED));
     assert_eq!(String::from_utf8_lossy(&output.stdout), UNFORMATTED);
+}
+
+#[test]
+fn formats_rust_by_default() {
+    let dir = project(&[("a.py", FORMATTED), ("src/lib.rs", UNFORMATTED_RS)]);
+    assert!(spacify(&dir, &[], None).status.success());
+    assert_eq!(fs::read_to_string(dir.path().join("src/lib.rs")).unwrap(), FORMATTED_RS);
+}
+
+#[test]
+fn leaves_rust_alone_when_only_python_is_enabled() {
+    let dir = project(&[
+        ("spacify.toml", "languages = [\"python\"]\n"),
+        ("a.py", UNFORMATTED),
+        ("lib.rs", UNFORMATTED_RS),
+    ]);
+    assert!(spacify(&dir, &[], None).status.success());
+    assert_eq!(fs::read_to_string(dir.path().join("a.py")).unwrap(), FORMATTED);
+    assert_eq!(fs::read_to_string(dir.path().join("lib.rs")).unwrap(), UNFORMATTED_RS);
+}
+
+#[test]
+fn formats_stdin_as_the_language_its_name_says() {
+    let dir = project(&[]);
+    let output = spacify(&dir, &["-", "--stdin-filename", "lib.rs"], Some(UNFORMATTED_RS));
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), FORMATTED_RS);
+}
+
+#[test]
+fn applies_rust_rule_overrides_to_rust_only() {
+    let dir = project(&[
+        ("spacify.toml", "[rust.rules]\nblank-before-block = false\n"),
+        ("a.py", UNFORMATTED),
+        ("lib.rs", UNFORMATTED_RS),
+    ]);
+    assert_eq!(spacify(&dir, &["--check"], None).status.code(), Some(1));
+    assert!(spacify(&dir, &["--check", "lib.rs"], None).status.success());
 }
 
 #[test]

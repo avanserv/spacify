@@ -20,6 +20,13 @@ CPYTHON_SKIP += test/test_annotationlib.py test/test_type_params.py test/test_co
 # Ruff 0.16.9 needs two passes to settle a `for` target here, with or without spacify.
 CPYTHON_SKIP += test/test_unicodedata.py
 
+# The Rust projects the rustfmt round trip runs over: stable code, one edition each, since
+# tree-sitter-rust refuses some of the nightly syntax in the standard library.
+RIPGREP_TAG := 15.2.0
+RIPGREP_DIR := target/ripgrep-$(RIPGREP_TAG)
+TOKIO_TAG := tokio-1.54.1
+TOKIO_DIR := target/tokio-$(TOKIO_TAG)
+
 .PHONY: help install format lint test compat bench build hooks check clean
 
 help: ## List available targets with their descriptions
@@ -44,10 +51,19 @@ $(CPYTHON_DIR):
 	git -c advice.detachedHead=false clone --quiet --depth 1 --branch $(CPYTHON_TAG) https://github.com/python/cpython.git $@
 	cd $@/Lib && rm $(CPYTHON_SKIP)
 
-compat: $(CPYTHON_DIR) ## Check that ruff and spacify agree, over the fixtures and CPython's Lib
-	cargo build --release --locked
+$(RIPGREP_DIR):
+	git -c advice.detachedHead=false clone --quiet --depth 1 --branch $(RIPGREP_TAG) https://github.com/BurntSushi/ripgrep.git $@
+
+$(TOKIO_DIR):
+	git -c advice.detachedHead=false clone --quiet --depth 1 --branch $(TOKIO_TAG) https://github.com/tokio-rs/tokio.git $@
+
+compat: $(CPYTHON_DIR) $(RIPGREP_DIR) $(TOKIO_DIR) ## Check that spacify agrees with ruff and rustfmt, over the fixtures and real projects
+	cargo build --release --locked --bin spacify --example tokens_equal
 	scripts/ruff-compat.sh tests/fixtures
 	scripts/ruff-compat.sh $(CPYTHON_DIR)/Lib
+	scripts/rustfmt-compat.sh tests/fixtures 2024
+	scripts/rustfmt-compat.sh $(RIPGREP_DIR) 2024
+	scripts/rustfmt-compat.sh $(TOKIO_DIR) 2021
 
 bench: $(CPYTHON_DIR) ## Time a check of CPython's Lib (hyperfine)
 	cargo build --release --locked
@@ -63,7 +79,7 @@ hooks: ## Run every git hook over every tracked file (prek)
 
 # The non-mutating forms, so a red gate means the tree is wrong rather than that it was just
 # rewritten: `make format` is the one that fixes.
-check: ## Full gate: format, lint, tests, ruff round trip
+check: ## Full gate: format, lint, tests, formatter round trips
 	cargo fmt --all --check
 	$(MAKE) --no-print-directory lint test compat
 

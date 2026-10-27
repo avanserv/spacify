@@ -7,10 +7,11 @@ use serde::Deserialize;
 #[serde(rename_all = "lowercase")]
 pub enum Language {
     Python,
+    Rust,
 }
 
 impl Language {
-    pub const ALL: &[Self] = &[Self::Python];
+    pub const ALL: &[Self] = &[Self::Python, Self::Rust];
 }
 
 /// What a file holds: the language, and the variant of it that changes the formatter's bounds.
@@ -19,6 +20,7 @@ pub enum SourceKind {
     Python,
     /// A `.pyi` stub, where ruff allows one blank line at module level instead of two.
     PythonStub,
+    Rust,
 }
 
 impl SourceKind {
@@ -28,6 +30,7 @@ impl SourceKind {
         match path.extension()?.to_str()? {
             "py" => Some(Self::Python),
             "pyi" => Some(Self::PythonStub),
+            "rs" => Some(Self::Rust),
             _ => None,
         }
     }
@@ -36,6 +39,7 @@ impl SourceKind {
     pub fn language(self) -> Language {
         match self {
             Self::Python | Self::PythonStub => Language::Python,
+            Self::Rust => Language::Rust,
         }
     }
 }

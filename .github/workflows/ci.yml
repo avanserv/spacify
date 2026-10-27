@@ -69,8 +69,8 @@ jobs:
       - name: Run the tests
         run: cargo test --locked
 
-  ruff-compat:
-    name: Ruff Round Trip
+  compat:
+    name: Formatter Round Trip
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -95,9 +95,10 @@ jobs:
       - name: Install ruff
         run: uv tool install ruff==0.16.9
 
-      # The fixtures, then CPython's Lib, in both orders, plus the AST check. The Makefile names the
-      # CPython tag and the Python that parses it, which uv fetches.
-      - name: Check that ruff and spacify agree
+      # The fixtures, CPython's Lib, ripgrep and tokio, in both orders against ruff or rustfmt, plus
+      # the AST and token checks. The Makefile names the tags and the Python that parses CPython's
+      # Lib, which uv fetches. rustfmt comes with the toolchain.
+      - name: Check that spacify agrees with ruff and rustfmt
         run: make compat
 
   build:
@@ -170,7 +171,7 @@ jobs:
     needs:
       - pre-commit
       - tests
-      - ruff-compat
+      - compat
       - build
       - security
     if: ${{ always() }}
