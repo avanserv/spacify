@@ -17,4 +17,5 @@ def f(value):
     b = 2
     # spacify: on
     c = 1
+
     d = 2

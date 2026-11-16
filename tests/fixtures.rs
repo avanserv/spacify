@@ -86,6 +86,7 @@ fn each_rule_can_be_switched_off() {
         blank_before_block: false,
         blank_after_block: false,
         blank_before_exit: false,
+        keep_paragraphs: false,
         collapse_groups: false,
         ..Rules::default()
     };

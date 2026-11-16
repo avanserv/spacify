@@ -18,7 +18,6 @@ def load(paths):
             continue
         seen.add(path)
     total = len(seen)
-
     count = 0
     log(total)
     return total
@@ -118,18 +117,19 @@ Each rule can be turned on or off. They all apply to sibling statements in the s
 | `blank-before-block` | At least one blank line before a block statement when another statement comes before it. |
 | `blank-after-block` | At least one blank line after a block statement, before the next statement. |
 | `blank-before-exit` | At least one blank line before an exit, in blocks of `exit-min-block-statements` (default 3) or more statements. |
-| `collapse-groups` | No blank line between two single-line statements of the same kind. |
+| `keep-paragraphs` | Exactly one blank line between two simple statements the author separated with any. |
+| `collapse-groups` | No blank line between two single-line statements of the same kind. Acts only with `keep-paragraphs` off. |
 
-The added blank lines take priority over `collapse-groups`. Blank lines that have a comment in the
-gap are kept, because a comment marks a paragraph you meant. When a rule does add a blank line, it
-goes above the comments and attributes that belong to the next statement. What each term means
+The added blank lines take priority over the other two rules, and `keep-paragraphs` over
+`collapse-groups`. Even with `keep-paragraphs` off, blank lines that have a comment in the gap are
+kept, because a comment marks a paragraph you meant. When a rule does add a blank line, it goes above the comments and attributes that belong to the next statement. What each term means
 depends on the language:
 
 | | Python | Rust |
 | --- | --- | --- |
 | Block statements | `if`, `for`, `while`, `try`, `with`, `match`, and their `async` forms | `if`, `match`, `for`, `while`, `loop`, and bare, `unsafe`, `async` and `const` blocks |
 | Exits | `return`, `raise`, `break`, `continue`, a bare `yield` | `return`, `break`, `continue`, and a function body's tail expression |
-| Kinds that collapse | assignments, augmented assignments, calls, `del`, `assert`, `global`/`nonlocal`, module constants | `let` and assignments, compound assignments, calls (macros, `.await` and `?` included) |
+| Simple statements, by kind | assignments, augmented assignments, calls, `del`, `assert`, `global`/`nonlocal`, module constants | `let` and assignments, compound assignments, calls (macros, `.await` and `?` included) |
 | Never touched | gaps next to a `def` or `class`, after an `import`, after a docstring | gaps next to an item (`fn`, `struct`, `use`, `const`, ...) |
 | Switched off by | `# fmt: off`/`# fmt: on`, `# spacify: off`/`# spacify: on`, `# fmt: skip` | `// spacify: off`/`// spacify: on`, `#[rustfmt::skip]` |
 | Most blank lines in a row | 2 at module level (1 in a `.pyi` stub), 1 in a nested block | 1 |
@@ -157,6 +157,7 @@ blank-before-block = true
 blank-after-block = true
 blank-before-exit = true
 exit-min-block-statements = 3
+keep-paragraphs = true
 collapse-groups = true
 
 [tool.spacify.rust.rules]                          # overrides the shared rules for Rust only

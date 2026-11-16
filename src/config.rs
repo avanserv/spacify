@@ -43,6 +43,8 @@ pub struct Rules {
     pub blank_before_exit: bool,
     /// A block shorter than this keeps its exit statement tight against the line before it.
     pub exit_min_block_statements: usize,
+    /// Wins over `collapse_groups`, which only acts when this is off.
+    pub keep_paragraphs: bool,
     pub collapse_groups: bool,
 }
 
@@ -53,6 +55,7 @@ impl Default for Rules {
             blank_after_block: true,
             blank_before_exit: true,
             exit_min_block_statements: 3,
+            keep_paragraphs: true,
             collapse_groups: true,
         }
     }
@@ -66,6 +69,7 @@ pub struct RuleOverrides {
     pub blank_after_block: Option<bool>,
     pub blank_before_exit: Option<bool>,
     pub exit_min_block_statements: Option<usize>,
+    pub keep_paragraphs: Option<bool>,
     pub collapse_groups: Option<bool>,
 }
 
@@ -182,6 +186,7 @@ impl Config {
             exit_min_block_statements: overrides
                 .exit_min_block_statements
                 .unwrap_or(shared.exit_min_block_statements),
+            keep_paragraphs: overrides.keep_paragraphs.unwrap_or(shared.keep_paragraphs),
             collapse_groups: overrides.collapse_groups.unwrap_or(shared.collapse_groups),
         }
     }
@@ -213,13 +218,15 @@ mod tests {
     fn a_language_override_wins_over_the_shared_rule() {
         let config: Config = toml::from_str(
             "[rules]\nexit-min-block-statements = 4\ncollapse-groups = false\n\n\
-             [python.rules]\nexit-min-block-statements = 2\n",
+             [python.rules]\nexit-min-block-statements = 2\nkeep-paragraphs = false\n",
         )
         .unwrap();
         let rules = config.rules_for(Language::Python);
         assert_eq!(rules.exit_min_block_statements, 2);
         assert!(!rules.collapse_groups);
+        assert!(!rules.keep_paragraphs);
         assert!(rules.blank_before_block);
+        assert!(config.rules_for(Language::Rust).keep_paragraphs);
     }
 
     #[test]

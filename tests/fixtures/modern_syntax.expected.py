@@ -37,6 +37,7 @@ def groups(run):
     except* ValueError:
         first = 1
         second = 2
+
         third = 3
 
     try:

@@ -1,12 +1,16 @@
 fn groups(mut a: u32) {
     let x = 1;
+
     let y = 2;
     a = x;
 
     a += y;
+
     a -= 1;
     call(a);
+
     other(a)?;
+
     task.await;
     println!("{a}");
 

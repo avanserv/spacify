@@ -44,10 +44,15 @@ pub struct Gap {
 }
 
 /// The blank-line count `gap` should have, or `None` when no rule has an opinion on it. Rules that
-/// add a line win over the one that removes lines, and nothing ever exceeds ruff's ceiling.
+/// add a line win over the others, and `keep_paragraphs` covers every gap `collapse_groups` would
+/// empty, so the latter only acts when the former is off. Nothing ever exceeds ruff's ceiling.
 pub fn desired(gap: &Gap, rules: &Rules) -> Option<usize> {
     if blank_before_block(gap, rules) || blank_after_block(gap, rules) || blank_before_exit(gap, rules) {
         return Some(gap.blank.clamp(1, gap.max));
+    }
+
+    if keep_paragraphs(gap, rules) {
+        return Some(1);
     }
 
     if collapse_groups(gap, rules) {
@@ -67,6 +72,11 @@ fn blank_after_block(gap: &Gap, rules: &Rules) -> bool {
 
 fn blank_before_exit(gap: &Gap, rules: &Rules) -> bool {
     rules.blank_before_exit && gap.next == Kind::Exit && gap.block_len >= rules.exit_min_block_statements
+}
+
+/// A blank line the author put between two simple statements marks a paragraph: it stays, as one.
+fn keep_paragraphs(gap: &Gap, rules: &Rules) -> bool {
+    rules.keep_paragraphs && gap.blank > 0 && matches!((gap.prev, gap.next), (Kind::Simple(_), Kind::Simple(_)))
 }
 
 /// A comment in the gap marks a paragraph the author meant, and a multi-line statement reads
@@ -99,6 +109,36 @@ mod tests {
 
     fn desired_default(gap: &Gap) -> Option<usize> {
         desired(gap, &Rules::default())
+    }
+
+    fn desired_collapsing(gap: &Gap) -> Option<usize> {
+        let rules = Rules {
+            keep_paragraphs: false,
+            ..Rules::default()
+        };
+        desired(gap, &rules)
+    }
+
+    #[test]
+    fn paragraphs_between_simple_statements_keep_one_line() {
+        let paragraph = |blank, max| desired_default(&Gap { blank, max, ..gap() });
+        assert_eq!(paragraph(0, 2), None);
+        assert_eq!(paragraph(1, 2), Some(1));
+        assert_eq!(paragraph(2, 2), Some(1));
+        assert_eq!(paragraph(3, 1), Some(1));
+
+        let mixed = Gap {
+            next: Kind::Simple(Group::Call),
+            has_comment: true,
+            both_single_line: false,
+            ..gap()
+        };
+        assert_eq!(desired_default(&mixed), Some(1));
+        let exit = Gap {
+            next: Kind::Other,
+            ..gap()
+        };
+        assert_eq!(desired_default(&exit), None);
     }
 
     #[test]
@@ -145,24 +185,24 @@ mod tests {
 
     #[test]
     fn collapse_needs_every_condition() {
-        assert_eq!(desired_default(&gap()), Some(0));
-        assert_eq!(desired_default(&Gap { blank: 0, ..gap() }), None);
+        assert_eq!(desired_collapsing(&gap()), Some(0));
+        assert_eq!(desired_collapsing(&Gap { blank: 0, ..gap() }), None);
         assert_eq!(
-            desired_default(&Gap {
+            desired_collapsing(&Gap {
                 has_comment: true,
                 ..gap()
             }),
             None
         );
         assert_eq!(
-            desired_default(&Gap {
+            desired_collapsing(&Gap {
                 both_single_line: false,
                 ..gap()
             }),
             None
         );
         assert_eq!(
-            desired_default(&Gap {
+            desired_collapsing(&Gap {
                 next: Kind::Simple(Group::Call),
                 ..gap()
             }),
@@ -176,13 +216,13 @@ mod tests {
             prev: Kind::Simple(Group::Constant),
             ..gap()
         };
-        assert_eq!(desired_default(&constant_then_assign), None);
+        assert_eq!(desired_collapsing(&constant_then_assign), None);
         let constants = Gap {
             prev: Kind::Simple(Group::Constant),
             next: Kind::Simple(Group::Constant),
             ..gap()
         };
-        assert_eq!(desired_default(&constants), Some(0));
+        assert_eq!(desired_collapsing(&constants), Some(0));
     }
 
     #[test]
@@ -217,8 +257,8 @@ mod tests {
             blank: 0,
             ..gap()
         };
-        let collapse = gap();
-        let all = [before_block, after_block, before_exit, collapse];
+        let paragraph = gap();
+        let all = [before_block, after_block, before_exit, paragraph];
         let toggles: [fn(&mut Rules); 4] = [
             |rules| rules.blank_before_block = false,
             |rules| rules.blank_after_block = false,
@@ -226,8 +266,12 @@ mod tests {
             |rules| rules.collapse_groups = false,
         ];
 
+        // With paragraphs kept, `collapse_groups` never acts, so the matrix runs without it.
         for (off, toggle) in toggles.iter().enumerate() {
-            let mut rules = Rules::default();
+            let mut rules = Rules {
+                keep_paragraphs: false,
+                ..Rules::default()
+            };
             toggle(&mut rules);
             for (index, gap) in all.iter().enumerate() {
                 assert_eq!(
