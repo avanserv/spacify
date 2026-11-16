@@ -36,13 +36,13 @@ jobs:
         run: rustup show active-toolchain || rustup toolchain install
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       # Format, lint and tests all live here, along with the workflow audits. The gitleaks hook is
       # the one that proves nothing in this job: it reads the staged diff, and nothing is staged.
       # The Security Scan job covers the tree instead.
       - name: Run pre-commit
-        uses: j178/prek-action@1382ad72dea72f9d53832f2bcb65b3e87a947204 # v3.0.1
+        uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
         with:
           extra-args: --all-files
 
@@ -64,7 +64,7 @@ jobs:
         run: rustup show active-toolchain || rustup toolchain install
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Run the tests
         run: cargo test --locked
@@ -83,10 +83,10 @@ jobs:
         run: rustup show active-toolchain || rustup toolchain install
 
       - name: Cache cargo
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
           enable-cache: false
 
@@ -118,7 +118,7 @@ jobs:
           manylinux: auto
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
           enable-cache: false
 
