@@ -9,6 +9,7 @@ def wrapped(a, b):
     )
 
     final = 2
+
     final = 3
 
     if total:
