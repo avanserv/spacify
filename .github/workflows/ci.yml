@@ -42,7 +42,7 @@ jobs:
       # the one that proves nothing in this job: it reads the staged diff, and nothing is staged.
       # The Security Scan job covers the tree instead.
       - name: Run pre-commit
-        uses: j178/prek-action@44924fe9ef4a6f88253c4b6b1bf11c689d3ce53d # v3.1.0
+        uses: j178/prek-action@7b101f8338a08d2bd6fdb3625e4e7692428763a3 # v3.1.1
         with:
           extra-args: --all-files
 
@@ -86,7 +86,7 @@ jobs:
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
 
@@ -118,7 +118,7 @@ jobs:
           manylinux: auto
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
 
@@ -161,7 +161,7 @@ jobs:
       # Advisories, licences and sources, as deny.toml sets them. Worth having beside Dependabot
       # alerts: an alert notifies and a gate refuses.
       - name: Check the dependency tree
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2.1.2
 
   # Single aggregation gate: passes if no job failed or was cancelled, and a skipped job counts as
   # a pass, exactly as GitHub treats a skipped required check. This is the one required status
